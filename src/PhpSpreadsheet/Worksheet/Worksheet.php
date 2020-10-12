@@ -2492,7 +2492,7 @@ class Worksheet implements IComparable
      *
      * @return array
      */
-    public function rangeToArray($pRange, $nullValue = null, $calculateFormulas = true, $formatData = true, $returnCellRef = false)
+    public function rangeToArray($pRange, $nullValue = null, $calculateFormulas = true, $formatData = true, $returnCellRef = false, $firstColumnNotNull = false)
     {
         // Returnvalue
         $returnValue = [];
@@ -2536,10 +2536,16 @@ class Worksheet implements IComparable
                             );
                         }
                     } else {
+                        if ($firstColumnNotNull && $col == 'A') {
+                            continue 2;
+                        } 
                         // Cell holds a NULL
                         $returnValue[$rRef][$cRef] = $nullValue;
                     }
                 } else {
+                    if ($firstColumnNotNull && $col == 'A') {
+                        continue 2;
+                    }
                     // Cell doesn't exist
                     $returnValue[$rRef][$cRef] = $nullValue;
                 }
@@ -2573,6 +2579,81 @@ class Worksheet implements IComparable
         }
 
         throw new Exception('Named Range ' . $pNamedRange . ' does not exist.');
+    }
+    
+    /**
+     * Creates array of non empty cells in a worksheet
+     */
+    public function toArrayCustom($calculateFormulas = true, $formatData = true, $notNullColumn = '') {
+        // Garbage collect...
+        $this->garbageCollect();
+
+        // Identify the range that we need to extract from the worksheet
+        $maxCol = $this->getHighestColumn();
+        $maxRow = $this->getHighestRow();
+        
+        $pRange = 'A1:' . $maxCol . $maxRow;
+        // Returnvalue
+        $returnValue = [];
+        // Identify the range that we need to extract from the worksheet
+        [$rangeStart, $rangeEnd] = Coordinate::rangeBoundaries($pRange);
+        $minCol = $rangeStart[0];
+        $maxCol = $rangeEnd[0];
+        
+        $rowTemplate = [];
+        for ($i = $minCol; $i <= $maxCol; $i++) {
+            $rowTemplate[Coordinate::stringFromColumnIndex($i)] = null;
+        }
+        
+        $currentRow = 1;
+        $currentRowTemplate = $rowTemplate;
+        $nonEmptyCells = $this->cellCollection->getCoordinates();
+        $last = end($nonEmptyCells);
+        foreach ($nonEmptyCells as $cell) {
+            preg_match_all('/(?P<letter>[A-Z]+)(?P<number>\d+)/', $cell, $matches);
+            $column = $matches['letter'][0];
+            $row = $matches['number'][0];
+            
+            if ($row !== $currentRow) {
+
+                if ($notNullColumn !== '' && is_null($returnValue[$currentRow][$notNullColumn])) {
+                    unset($returnValue[$currentRow]);
+                }
+                $currentRowTemplate = $rowTemplate;
+                $currentRow = $row;
+            }
+            
+            $cell = $this->cellCollection->get($column . $row);
+            if ($cell->getValue() !== null) {
+                if ($cell->getValue() instanceof RichText) {
+                    $currentRowTemplate[$column] = $cell->getValue()->getPlainText();
+                } else {
+                    if ($calculateFormulas) {
+                        $currentRowTemplate[$column] = $cell->getCalculatedValue();
+                    } else {
+                        $currentRowTemplate[$column] = $cell->getValue();
+                    }
+                }
+
+                if ($formatData) {
+                    $style = $this->parent->getCellXfByIndex($cell->getXfIndex());
+                    $currentRowTemplate[$column] = NumberFormat::toFormattedString(
+                        $currentRowTemplate[$column],
+                        ($style && $style->getNumberFormat()) ? $style->getNumberFormat()->getFormatCode() : NumberFormat::FORMAT_GENERAL
+                    );
+                }
+            }
+            
+            $returnValue[$row] = $currentRowTemplate;
+            
+            if ($last === $column.$row && $notNullColumn !== '') {
+                if (is_null($returnValue[$currentRow][$notNullColumn])) {
+                    unset($returnValue[$currentRow]);
+                }
+            }
+        }
+        
+        return $returnValue;
     }
 
     /**
