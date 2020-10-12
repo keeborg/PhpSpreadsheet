@@ -2489,7 +2489,7 @@ class Worksheet implements IComparable
      * @param bool $formatData Should formatting be applied to cell values?
      * @param bool $returnCellRef False - Return a simple array of rows and columns indexed by number counting from zero
      *                               True - Return rows and columns indexed by their actual row and column IDs
-     *
+     * @param bool $firstColumnNotNull - if the first column of the row is empty, we skip this row
      * @return array
      */
     public function rangeToArray($pRange, $nullValue = null, $calculateFormulas = true, $formatData = true, $returnCellRef = false, $firstColumnNotNull = false)
